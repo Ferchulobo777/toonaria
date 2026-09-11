@@ -1,0 +1,30 @@
+# GDevelop
+.gdevelop/
+exports/
+temp/
+*.zip
+
+# Node (CLI gdexporter instalado en package.json de la raiz)
+node_modules/
+
+# Tooling de terceros clonado a nivel proyecto (gdevelop-mcp: repo + node_modules + Chromium
+# de Puppeteer, ~170MB) — se reconstruye con git clone + pnpm install + pnpm build, no se versiona
+.tools/
+
+# Backups automaticos generados al editar game.json durante el desarrollo
+juego/*.bak*
+
+# Python (scripts de generacion de pixel art en diseno/arte/pixel-art)
+__pycache__/
+*.pyc
+
+# Tooling de Claude Code (uso local propio, el repo se comparte para ver el proyecto en si)
+.agents/
+.mcp.json
+skills-lock.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+personaje.png

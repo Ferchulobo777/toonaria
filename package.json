@@ -1,0 +1,11 @@
+{
+  "name": "multimedia-juegos-web-integrador",
+  "private": true,
+  "description": "Herramientas de build/export para el trabajo integrador de Multimedia y Juegos en Web (GDevelop). El juego en si no vive en este package.json: esto solo trae el CLI de exportacion.",
+  "scripts": {
+    "export": "gdexport --project ./juego/game.json --out ./exports"
+  },
+  "devDependencies": {
+    "gdexporter": "^4.0.0-beta7"
+  }
+}
