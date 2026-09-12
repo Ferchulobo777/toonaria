@@ -23,6 +23,9 @@ __pycache__/
 .mcp.json
 skills-lock.json
 
+# Entrega de la unidad de Diseno Pixel Art: se trabaja solo en local, no va al repo remoto
+diseno/arte/pixel-art/
+
 # OS / editor
 .DS_Store
 Thumbs.db
