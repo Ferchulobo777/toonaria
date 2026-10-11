@@ -1,0 +1,21 @@
+# Exportaciones y temporales de GDevelop
+.gdevelop/
+exports/
+temp/
+*.zip
+juego/*.bak*
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# Entrega de la unidad de Diseño Pixel Art: se trabaja aparte
+diseno/arte/pixel-art/
+
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+.vscode/
