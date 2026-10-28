@@ -1,8 +1,8 @@
 # Game Design Document — Toonaria
 
 Trabajo integrador de **Multimedia y Juegos en Web** — Tecnicatura Universitaria en Desarrollo
-Web, FCAD, UNER, 2026. Equipo: Fernando Rubén Bareiro Ruiz, Mateo Fernández, Natalia Ailén
-González y Fernando Rodríguez.
+Web, FCAD, UNER, 2026. Equipo: Fernando Rodríguez, Mateo Fernández, Natalia Ailén González y
+Fernando Rubén Bareiro Ruiz.
 
 Sigue la plantilla de GDD de la cátedra (Unidad 3), en su mismo orden. Las secciones que no
 aplican a este juego quedan con el motivo. El guion escena por escena está en
@@ -54,22 +54,28 @@ enemigo final).
 
 ## Controles del juego
 
-| Acción | Teclado |
-|---|---|
-| Moverse | Flechas ← → o A / D |
-| Saltar / doble salto | Espacio, W o ↑ (mantener = más alto) |
-| Carta lunar | Mantener X o J para cargar, soltar para tirar |
-| Farol incendiario | C o K |
-| Parry | Z o L, justo antes del golpe |
-| Pasar diálogo | Enter (también Espacio, X o Z) |
-| Pausa | Esc (Q en pausa vuelve al título) |
+| Acción | Teclado | Pantalla táctil |
+|---|---|---|
+| Moverse | Flechas ← → o A / D | Botones ◄ ► (abajo a la izquierda) |
+| Saltar / doble salto | Espacio, W o ↑ (mantener = más alto) | Botón de salto |
+| Carta lunar | Mantener X o J para cargar, soltar para tirar | Mantener el botón de carta |
+| Farol incendiario | C o K | Botón de farol |
+| Parry | Z o L, justo antes del golpe | Botón de parry |
+| Pasar diálogo | Enter (también Espacio, X o Z) | Tocar la pantalla |
+| Pausa | Esc (Q en pausa vuelve al título) | Botón de pausa |
 
 Cada acción tiene dos teclas: una para la mano izquierda (WASD + J/K/L) y otra para jugar con las
-flechas (X/C/Z). Plataforma única: teclado en navegador.
+flechas (X/C/Z).
+
+**Celular y tablet** (pedido de la devolución del Game Test): los botones en pantalla aparecen
+sólo si el dispositivo tiene pantalla táctil, o apenas alguien toca la pantalla; en una PC con
+teclado no tapan nada. Como el juego se escala entero a la pantalla, en una tablet los botones
+crecen solos. Varios dedos a la vez funcionan (moverse y saltar al mismo tiempo).
 
 ## Requerimientos tecnológicos
 
 - **Motor**: GDevelop 5 (5.6), exportación HTML5. Resolución 640 × 360 escalada sin suavizado.
+- **Plataformas**: navegador en PC (teclado) y en celular o tablet (controles táctiles).
 - **Creación de niveles**: los mapas se escriben como grillas de texto (una letra por celda de
   16 px) y un script los convierte en instancias. Ver "Implementación" en el Apéndice.
 - **Generación del proyecto**: `herramientas/construir_juego.py` arma `juego/game.json` completo
@@ -126,6 +132,8 @@ resolución es fija y el volumen se maneja desde el navegador.
   poder ir directo al jefe importa más que obligar a desbloquearlo.
 - **Controles** y **Créditos**: paneles sobre el título, sin cambiar de escena.
 - **Pausa**: dentro de cada nivel.
+- **Resultados del nivel**: al terminar cada uno de los tres niveles, antes de pasar al siguiente
+  (ver "Score"). El prólogo y la torre van directo: son un recuerdo y un final, no una prueba.
 - **Final**: epílogo y créditos que suben sobre la torre; vuelve al título.
 
 No hay contenido desbloqueable, galería ni trucos.
@@ -133,7 +141,7 @@ No hay contenido desbloqueable, galería ni trucos.
 ## Diagrama de flujo
 
 ```
-Título ─┬─ Jugar ──────► Prólogo ► Nivel 1 ► Nivel 2 ► Nivel 3 ► Arena del jefe ► Final ─┐
+Título ─┬─ Jugar ──► Prólogo ► Nivel 1 ►R► Nivel 2 ►R► Nivel 3 ►R► Arena del jefe ► Final ─┐
         ├─ Capítulos ──► cualquiera de las cinco escenas jugables                         │
         ├─ Controles                                                                      │
         └─ Créditos                                                                       │
@@ -141,7 +149,8 @@ Título ─┬─ Jugar ──────► Prólogo ► Nivel 1 ► Nivel 2 �
    └──────────────────── (Pausa → Q, o al terminar los créditos) ◄──────────────────────┘
 ```
 
-No hay *game over*: al morir, Ventura reaparece en el último farol encendido.
+**R** = pantalla de resultados (siguiente fase o repetir el nivel). No hay *game over*: al morir,
+Ventura reaparece en el último farol encendido.
 
 ## Pantalla de carga
 
@@ -153,6 +162,8 @@ audio comprimido), así que carga en segundos y no justifica tips ni minijuegos 
 Desplazamiento lateral 2D con seguimiento suave:
 - Persigue un punto **36 px adelante** de hacia donde mira Ventura, para mostrar más de lo que
   viene, con suavizado exponencial (no se pega al personaje).
+- Al darse vuelta, ese adelanto cambia de lado con su propio suavizado, más lento que el de la
+  cámara: antes saltaba de golpe 72 px y era lo que hacía sentir brusco el movimiento.
 - Los límites del nivel se aplican a mano en vez de con la acción de cámara del motor, para poder
   sumar el **temblor** (golpes, explosiones, jefe) después del límite.
 - **Parallax**: cielo, nubes lejanas, ciudad, nubes cercanas y bruma por delante de la acción. El
@@ -165,7 +176,10 @@ Desplazamiento lateral 2D con seguimiento suave:
   y **barra de maná**.
 - **Medidor de carga** flotante sobre la cabeza, sólo mientras se carga: la información aparece
   donde el jugador está mirando.
-- **Avisos** centrados arriba (farol encendido, casco que frena cartas).
+- **Avisos** centrados arriba (farol encendido, casco que frena cartas), con un recuadro oscuro
+  del ancho del texto: sobre los fondos ilustrados la letra clara sola se perdía.
+- **Cartel de golpe** ("¡PARRY!") que sube sobre Ventura y se desvanece en medio segundo.
+- **Botones táctiles** en una capa propia, sólo en celular y tablet.
 - **Barra del jefe** abajo al centro, con su nombre: cambia de "Ambrosio, el Farolero" a
   "Ambrosio, el Lobo" en la fase 2.
 - **Caja de diálogo** con el retrato de quien habla (Ventura, Ambrosio, el Actor, el lobo),
@@ -188,6 +202,7 @@ Pixel art de 48 px de alto. Comportamiento de plataformas de GDevelop, ajustado 
 | Medida | Valor | Por qué |
 |---|---|---|
 | Velocidad máxima | 150 px/s (90 cargando) | Cargar una carta fuerte cuesta movilidad |
+| Aceleración / frenado | 900 / 1100 px/s² | Arranque y frenada se ven (~0,15 s) en vez de un corte seco |
 | Gravedad subiendo / cayendo | 1200 / 1600 | Gravedad asimétrica: el personaje no "flota" al bajar |
 | Velocidad de salto | 427, sostén 0,3 s | Salto corto ~38 px tocando, completo ~75 px manteniendo |
 | Doble salto | Un salto más en el aire; anula la caída | Rinde igual aunque se use bajando |
@@ -210,11 +225,19 @@ nivel de la carta.
 | 45 – 89 | Media | 22 – 36 | 11 – 18 | 368 – 434 px/s |
 | 90 – 100 | Completa | 37 – 40 | 18 – 20 | 435 – 450 px/s |
 
+**Carga completa**: cuando la carga llega al máximo hay un estallido de luz alrededor de Ventura
+(destello, chispas, temblor y sonido), así el jugador sabe sin mirar el medidor que la carta ya
+está lista. La carta completa **explota al chocar** con el mismo daño en área que el farol: el
+premio de aguantar la carga es poder pegarle a un grupo.
+
 **Farol incendiario (arma secundaria)**: el farol de Ambrosio como granada. Sale en arco con
 gravedad propia, explota al tocar piso o enemigo y daña en área **una sola vez** (35). Cuesta 30
 de maná y tiene 0,8 s de enfriamiento.
 
 **Parry**: ventana de 0,2 s y enfriamiento de 0,45 s. Es una apuesta de *timing*, no un escudo.
+Cuando sale bien se exagera a propósito: efecto al doble de tamaño, destello, fogonazo blanco de
+pantalla, cámara lenta y el cartel "¡PARRY!". Es la jugada más difícil del juego y tiene que
+sentirse como un premio, no como un bloqueo.
 
 | Contra | Resultado |
 |---|---|
@@ -256,13 +279,30 @@ Ninguno modifica los controles.
 
 ## Score
 
-No tiene puntaje: el objetivo es llegar y la historia es la recompensa. Un puntaje empujaría a
-jugar distinto (farmear enemigos) de lo que pide el diseño (avanzar y aprender patrones).
+Al terminar cada nivel, una pantalla de resultados muestra tiempo, enemigos vencidos, parries,
+faroles encendidos y daño recibido, y los convierte en puntaje y rango:
+
+| Concepto | Puntos |
+|---|---|
+| Enemigo vencido | +100 |
+| Parry | +150 |
+| Farol encendido | +200 |
+| Bono de tiempo | +3000 − 10 por segundo (se agota a los 300 s) |
+| Daño recibido | −5 por punto de vida |
+
+Rango: **S** desde 4500, **A** desde 3500, **B** desde 2500 y **C** debajo. El mejor puntaje de
+cada nivel se guarda en el navegador y la pantalla avisa si hay récord nuevo.
+
+Lo pidió la cátedra en la devolución. Al principio no teníamos puntaje porque temíamos que
+empujara a "farmear" enemigos; con esta fórmula no pasa: los enemigos no reaparecen, el bono de
+tiempo premia avanzar y lo que más suma (parry y faroles) es justamente lo que el diseño quiere que
+se haga. El tiempo corre sólo mientras se juega: leer los diálogos no se castiga.
 
 ## Recompensa y economía
 
-No hay moneda ni tienda. Las recompensas son té y luna (escondidos en rutas altas o que sueltan
-los enemigos y barriles al azar) y los avances de la historia al final de cada nivel.
+Por ahora no hay moneda ni tienda. Las recompensas son té y luna (escondidos en rutas altas o que
+sueltan los enemigos y barriles al azar), el puntaje de cada nivel y los avances de la historia. La
+tienda de mejoras está planificada para la 2.ª entrega (ver `diseno/Plan-de-Mejoras.md`).
 
 ## Vehículos
 
@@ -454,9 +494,12 @@ parry) y lo que castiga baja (daño, caída, derrota).
 - La tramoya del nivel 2 (andamios con cuervos encima) puede ser el tramo más frustrante.
 - Tiempos reales de cada nivel.
 
+**Próximas entregas**: mapamundi, tienda de mejoras (dash, doble dash), tutorial y dificultad
+(10/11), y giro de Ventura, pulido de animaciones, humor de los escenarios y guion (17/11). Detalle
+en `diseno/Plan-de-Mejoras.md`.
+
 **Expansiones posibles** (fuera del alcance): una versión mini-jefe de Mr. Pennypencher (el
-Repintado del delantal) con ataques propios; controles táctiles; mejoras del mazo entre niveles;
-publicación en itch.io.
+Repintado del delantal) con ataques propios.
 
 **Texto del juego**: los diálogos completos están en `Guion.md` y en los diccionarios
 `DIALOGOS_*` de `herramientas/construir_juego.py`.
@@ -514,6 +557,7 @@ ahí, el cambio tiene que pasarse al script o se pierde al regenerar.
 | Ciclo del jefe | Fases 1 y 2 en el orden del diseño, transición al 50 %, derrota y diálogo final |
 | Morir contra el jefe | La pelea se reinicia (320 de vida, fase 1) |
 | Menú y capítulos | Navegación con teclado; "La cima de la torre" entra directo a la arena |
+| Fase 1 (2026-10-27) | El nivel 1 termina en la pantalla de resultados (puntaje, rango, récord) y pasa al nivel 2 |
 | Validadores | Todas las instrucciones y expresiones válidas, sin errores de consola |
 
 ---
@@ -568,3 +612,17 @@ retratos de diálogo, menú con capítulos, 41 efectos de sonido y 6 temas. Prob
   resto del recuerdo.
 - En algunas hojas el pelaje del lobo salió un tono más claro: se corrige bajando un escalón la
   rampa de grises en esos frames, para que el jefe no cambie de color entre ataques.
+
+**2026-10-19 — Devolución del Game Test.** La cátedra nos devolvió 14 puntos de mejora (planilla
+del Game Test y clase del 20/10). Los ordenamos en tres fases, una por entrega (3/11, 10/11 y
+17/11), en `diseno/Plan-de-Mejoras.md`.
+
+**2026-10-23 — Fase 1 de mejoras (1.ª entrega).** Implementamos los seis puntos de sensación de
+juego y accesibilidad:
+- Controles táctiles con detección de dispositivo. Antes, en el celular no había forma de jugar.
+- Movimiento más suave: aceleración y frenado propios, y el adelanto de la cámara que ya no salta
+  al darse vuelta.
+- Parry más gráfico: efecto exagerado, fogonazo y cartel "¡PARRY!".
+- Estallido al llegar a la carga completa, y la carta completa que explota en área.
+- Avisos con recuadro para que se lean sobre los fondos.
+- Pantalla de resultados con puntaje, rango y récord guardado.

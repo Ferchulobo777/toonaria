@@ -11,8 +11,8 @@ En Toonaria, una ciudad victoriana dibujada como un cartoon de los años 30, la 
 pelea con cartas que se cargan, cruza la ciudad para encontrar a **Ambrosio**, el farolero que le
 enseñó el oficio y que ahora es un lobo en la cima de la torre del reloj.
 
-**Equipo**: Fernando Rubén Bareiro Ruiz · Mateo Fernández · Natalia Ailén González · Fernando
-Rodríguez.
+**Equipo**: Fernando Rodríguez · Mateo Fernández · Natalia Ailén González · Fernando Rubén
+Bareiro Ruiz.
 
 ---
 
@@ -52,7 +52,10 @@ Rodríguez.
 | Pasar diálogo | Enter |
 | Pausa | Esc |
 
-Desde el título, **Capítulos** lleva directo a cualquier nivel o al jefe.
+En **celular o tablet** aparecen botones en pantalla para todas las acciones.
+
+Desde el título, **Capítulos** lleva directo a cualquier nivel o al jefe. Al terminar cada nivel,
+una pantalla de resultados muestra el puntaje, el rango y el mejor puntaje guardado.
 
 ### Abrir el proyecto
 

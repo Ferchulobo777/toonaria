@@ -82,8 +82,21 @@ const estado = () => pagina.evaluate(() => {
 const registro = [];
 let cuadroGif = 0;
 let cdp = null;
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+// Cámara lenta para grabar: con {"lento": 0.5} el juego corre a la mitad de velocidad y todas las
+// esperas de la prueba se alargan igual. La captura del navegador saca los mismos cuadros por
+// segundo real, así que en tiempo de juego son el doble: el video se arma a velocidad normal y
+// queda fluido.
+let lento = 1;
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms * lento));
 for (const p of pasos) {
+  if (p.lento) {
+    lento = 1 / p.lento;
+    await pagina.evaluate((f) => {
+      const tm = gdjs.TimeManager.prototype;
+      if (!tm.__updateOriginal) tm.__updateOriginal = tm.update;
+      tm.update = function (transcurrido, minimoFPS) { return tm.__updateOriginal.call(this, transcurrido * f, minimoFPS); };
+    }, p.lento);
+  }
   if (p.esperar) await dormir(p.esperar);
   if (p.tecla) { await pagina.keyboard.press(p.tecla, { delay: 60 }); }
   if (p.mantener) {
@@ -133,7 +146,8 @@ for (const p of pasos) {
       writeFileSync(join(salida, `g_${String(cuadroGif++).padStart(4, "0")}.jpg`), Buffer.from(f.data, "base64"));
       await cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
     });
-    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 640, maxHeight: 360, everyNthFrame: 2 });
+    const ancho = p.grabarInicio.ancho ?? 640;
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 88, maxWidth: ancho, maxHeight: Math.round(ancho * 9 / 16), everyNthFrame: p.grabarInicio.cada ?? 2 });
   }
   if (p.grabarFin && cdp) await cdp.send("Page.stopScreencast");
   if (p.explorar) registro.push({ paso: "explorar", ...(await explorar(p.explorar)) });
@@ -172,7 +186,7 @@ for (const p of pasos) {
 // pasa los diálogos. No busca jugar bien: sirve para comprobar que el nivel se puede cruzar
 // (que no hay paredes imposibles ni pozos sin salida) y para medir hasta dónde se llega.
 async function explorar(o) {
-  const hastaX = o.hastaX ?? 1e9, limite = Date.now() + (o.ms ?? 60000);
+  const hastaX = o.hastaX ?? 1e9, limite = Date.now() + (o.ms ?? 60000) * lento;
   const escenaInicial = await pagina.evaluate(() => window.__juego.getSceneStack().getCurrentScene().getName());
   let maxX = 0, trabado = 0, saltos = 0, caidas = 0, dialogos = 0, ultimoX = null, dobleUsado = false;
   let parries = 0;
@@ -216,13 +230,13 @@ async function explorar(o) {
       await pagina.keyboard.press("Enter", { delay: 30 }); dialogos++; await dormir(120); continue;
     }
     if (o.parry && e.proyCerca) { await pagina.keyboard.press("z", { delay: 30 }); parries++; }
-    if (!derecha) { await pagina.keyboard.down("ArrowRight"); derecha = true; }
+    if (!derecha && !o.quieto) { await pagina.keyboard.down("ArrowRight"); derecha = true; }
     if (o.atacar && Math.random() < 0.15) await pagina.keyboard.press("x", { delay: 20 });
     if (ultimoX !== null && e.x < ultimoX - 120) caidas++;
     trabado = ultimoX !== null && Math.abs(e.x - ultimoX) < 0.5 ? trabado + 1 : 0;
     ultimoX = e.x;
     if (e.enPiso) dobleUsado = false;
-    if (e.enPiso && (trabado >= 3 || !e.pisoAdelante)) {
+    if (e.enPiso && !o.quieto && (trabado >= 3 || !e.pisoAdelante)) {
       await pagina.keyboard.down("Space"); await dormir(300); await pagina.keyboard.up("Space");
       saltos++; trabado = 0; continue;
     }
