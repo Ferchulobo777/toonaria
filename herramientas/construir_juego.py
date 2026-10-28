@@ -36,6 +36,20 @@ FUENTE = (PX / "fuente" / "toonaria_fuente.fnt", PX / "fuente" / "toonaria_fuent
 rec = Recursos(JUEGO)
 
 
+def efecto_parry():
+    """Lo que se ve en todo parry exitoso, sea contra un golpe o contra un proyectil. Se
+    exagera a propósito (efecto al doble, destello, fogonazo blanco y cartel) porque es la
+    jugada más difícil del juego y tiene que sentirse como un premio, no como un bloqueo."""
+    return [crear("ParryFx", f"{V}.X() + {VAR('Mirando')} * 10", f"{V}.Y() - 26"),
+            escala("ParryFx", "=", 2),
+            crear("Destello", f"{V}.X() + {VAR('Mirando')} * 14", f"{V}.Y() - 26"),
+            escala("Destello", "=", 4),
+            crear("TextoGolpe", f"{V}.X()", f"{V}.Y() - 64"),
+            texto("TextoGolpe", '"¡PARRY!"'),
+            A("SetX", "TextoGolpe", "=", f"{V}.X() - TextoGolpe.Width() / 2"),
+            var_s("Flash", "=", 0.45)]
+
+
 def lineas(*renglones):
     """Texto de varias líneas para un parámetro de GDevelop (con NewLine(), no con escapes)."""
     return " + NewLine() + ".join(f'"{r}"' for r in renglones)
@@ -75,8 +89,10 @@ def objetos_globales():
                "EnPisoAntes": 1, "Accion": "", "TiempoAccion": 0, "Invulnerable": 0,
                "Aturdido": 0, "Muerto": 0, "TiempoMuerte": 0, "ParryVentana": 0,
                "ParryCooldown": 0, "FarolCooldown": 0, "SinGastar": 0, "PasoPolvo": 0,
-               "EmpujeDir": 1, "Dano": 0},
-        comportamientos=[personaje_plataformas()])
+               "EmpujeDir": 1, "Dano": 0, "CargaLista": 0},
+        # Aceleración y frenado más bajos que los del comportamiento por defecto: el arranque
+        # y la frenada se ven (unos 0,15 s) en vez de ser un corte seco entre quieto y corriendo.
+        comportamientos=[personaje_plataformas(acceleration=900, deceleration=1100)])
 
     p = PX / "proyectiles"
     carta = sprite(rec, "Carta", [(f"Nivel{n}", frames_de(p, f"Carta{n}"), 0.05, True)
@@ -238,13 +254,28 @@ def objetos_globales():
                + [(n, frames_de(h, f"Retrato{n}"), 1, False) for n in ("Ambrosio", "Actor", "Lobo")],
                origen=(0, 0)),
         bitmap("TextoDialogo"), bitmap("NombreDialogo", tinte="176;133;214"),
-        bitmap("TextoAviso", alinear="center"), bitmap("TextoPausa", alinear="center"),
+        bitmap("TextoAviso", alinear="center"), bitmap("TextoPausa", escala_=2.0, alinear="center"),
     ]
     zona = sprite(rec, "ZonaDialogo", [("Default", [h / "Negro.png"], 1, False)], origen=(0, 0),
                   vars_={"Id": "", "Visto": 0, "Despues": ""})
+    # Controles táctiles: un solo objeto con una animación por botón; cada instancia dice en
+    # Tipo qué acción representa, y así la lectura de los toques es la misma para todos.
+    tactil = h / "tactil"
+    botones = sprite(rec, "BotonTactil",
+                     [(n, frames_de(tactil, f"Boton{n}"), 1, False)
+                      for n in ("Izq", "Der", "Saltar", "Carta", "Farol", "Parry", "Pausa")],
+                     origen=(0, 0), vars_={"Tipo": ""})
+    extras = [
+        botones,
+        sprite(rec, "Blanco", [("Default", [h / "Blanco.png"], 1, False)], origen=(0, 0)),
+        bitmap("TextoGolpe", alinear="center", tinte="238;226;246"),
+        panel(rec, "FondoAviso", h / "CajaDialogo.png", 200, 20, 6),
+        bitmap("TituloResultados", escala_=2.0, alinear="center", tinte="246;199;96"),
+        bitmap("TextoResultados"),
+    ]
     return ([ventura, carta, farol] + efectos + [repintado, actor, cuervo, agente, mascara_, garra,
             onda_suelo, onda_luna, farol_gas, te, luna, salida, charco, engranaje, caedor, toldo, tablon,
-            barril, andamio, nube, rejas, pendulo, zarpazo, zona] + hud)
+            barril, andamio, nube, rejas, pendulo, zarpazo, zona] + hud + extras)
 
 
 def grupo(nombre, *objetos):
@@ -272,8 +303,67 @@ def plat_a(tipo, *extra):
 SALTO = ("Space", "w", "Up")
 
 
+def tactil(boton):
+    """El botón táctil está apretado (lo mantiene la hoja Tactil en Tactil.<boton>)."""
+    return si_var_s(f"Tactil.{boton}", "=", 1)
+
+
+def tactil_recien(boton):
+    """El botón táctil se apretó en este cuadro (equivale a 'tecla recién presionada')."""
+    return si_var_s(f"Tactil.{boton}Recien", "=", 1)
+
+
 def recien_salto():
-    return O(*[tecla_recien(k) for k in SALTO])
+    return O(*[tecla_recien(k) for k in SALTO], tactil_recien("Saltar"))
+
+
+BOTONES_TACTILES = ("Izq", "Der", "Saltar", "Carta", "Farol", "Parry", "Pausa")
+
+LEER_TOQUES = """// Leo todos los toques activos y no sólo el primero: con el cursor simulado por el toque
+// no se podría mantener una flecha y saltar al mismo tiempo. Cada botón queda apretado si
+// algún toque cae dentro de su caja, y "Recien" vale 1 sólo en el cuadro en que se apretó.
+const estado = runtimeScene.getVariables().get("Tactil");
+const entrada = runtimeScene.getGame().getInputManager();
+const capa = runtimeScene.getLayer("Tactil");
+const toques = entrada.getAllTouchIdentifiers();
+for (const boton of runtimeScene.getObjects("BotonTactil")) {
+  const tipo = boton.getVariables().get("Tipo").getAsString();
+  let apretado = false;
+  for (const id of toques) {
+    const punto = capa.convertCoords(entrada.getTouchX(id), entrada.getTouchY(id));
+    if (boton.insideObject(punto[0], punto[1])) {
+      apretado = true;
+      break;
+    }
+  }
+  const antes = estado.getChild(tipo).getAsNumber();
+  estado.getChild(tipo + "Recien").setNumber(apretado && antes === 0 ? 1 : 0);
+  estado.getChild(tipo).setNumber(apretado ? 1 : 0);
+  boton.setOpacity(apretado ? 255 : 140);
+}"""
+
+
+def codigo_js(codigo):
+    return {"type": "BuiltinCommonInstructions::JsCode", "inlineCode": codigo,
+            "parameterObjects": "", "useStrict": True, "eventsSheetExpanded": False}
+
+
+def eventos_tactil():
+    return [
+        GRUPO("Controles táctiles", [
+            NOTA("Los botones en pantalla aparecen sólo si el dispositivo tiene pantalla táctil "
+                 "(celular o tablet), o apenas alguien toca la pantalla. En una PC con teclado "
+                 "no tapan nada. Como el juego se escala entero a la pantalla, los botones "
+                 "crecen solos en una tablet."),
+            E([al_iniciar()], [A("HideLayer", "", '"Tactil"'),
+                               A("AnimatableCapability::AnimatableBehavior::SetName", "BotonTactil",
+                                 "Animation", "=", "BotonTactil.VariableString(Tipo)")]),
+            E([al_iniciar(), C("SystemInfo::HasTouchScreen", "")],
+              [A("ShowLayer", "", '"Tactil"')]),
+            E([C("HasAnyTouchStarted", "")], [A("ShowLayer", "", '"Tactil"')]),
+            codigo_js(LEER_TOQUES),
+        ], color="jugador"),
+    ]
 
 
 def eventos_jugador():
@@ -299,14 +389,15 @@ def eventos_jugador():
             E([si_var_s("Bloqueado", "=", 0), si_var_o(V, "Aturdido", "<=", 0),
                si_var_o(V, "Muerto", "=", 0)],
               [plat_a("IgnoreDefaultControls", "no")],
-              [E([O(tecla("a"), tecla("Left"))], [plat_a("SimulateLeftKey")]),
-               E([O(tecla("d"), tecla("Right"))], [plat_a("SimulateRightKey")]),
-               NOTA("W y flecha arriba saltan igual que Espacio. Simular la tecla mientras se "
-                    "mantiene apretada también sostiene el salto (salto variable)."),
-               E([O(tecla("w"), tecla("Up"))], [plat_a("SimulateJumpKey")])]),
-            E(libre + [si_var_o(V, "Aturdido", "<=", 0), O(tecla("a"), tecla("Left"))],
+              [E([O(tecla("a"), tecla("Left"), tactil("Izq"))], [plat_a("SimulateLeftKey")]),
+               E([O(tecla("d"), tecla("Right"), tactil("Der"))], [plat_a("SimulateRightKey")]),
+               NOTA("W, flecha arriba y el botón táctil saltan igual que Espacio. Simular la "
+                    "tecla mientras se mantiene apretada también sostiene el salto (salto "
+                    "variable)."),
+               E([O(tecla("w"), tecla("Up"), tactil("Saltar"))], [plat_a("SimulateJumpKey")])]),
+            E(libre + [si_var_o(V, "Aturdido", "<=", 0), O(tecla("a"), tecla("Left"), tactil("Izq"))],
               [var_o(V, "Mirando", "=", -1), voltear(V, True)]),
-            E(libre + [si_var_o(V, "Aturdido", "<=", 0), O(tecla("d"), tecla("Right"))],
+            E(libre + [si_var_o(V, "Aturdido", "<=", 0), O(tecla("d"), tecla("Right"), tactil("Der"))],
               [var_o(V, "Mirando", "=", 1), voltear(V, False)]),
         ]),
         GRUPO("Sensación de salto", [
@@ -415,7 +506,7 @@ def parar_musica():
 
 def eventos_combate():
     libre = [si_var_s("Bloqueado", "=", 0), si_var_o(V, "Muerto", "=", 0)]
-    teclas_carta = O(tecla_recien("x"), tecla_recien("j"))
+    teclas_carta = O(tecla_recien("x"), tecla_recien("j"), tactil_recien("Carta"))
     return [
         GRUPO("Maná", [
             NOTA("El maná se recupera recién después de 0,9 s sin gastar: obliga a elegir "
@@ -428,12 +519,23 @@ def eventos_combate():
         GRUPO("Carta lunar (cargar y soltar)", [
             E(libre + [teclas_carta, si_var_o(V, "Cargando", "=", 0), si_var_o(V, "Mana", ">=", 4)],
               [var_o(V, "Cargando", "=", 1), var_o(V, "Carga", "=", 0), sonido_fx("carga", 35)]),
-            E([si_var_o(V, "Cargando", "=", 1), O(tecla("x"), tecla("j"))],
+            E([si_var_o(V, "Cargando", "=", 1), O(tecla("x"), tecla("j"), tactil("Carta"))],
               [var_o(V, "Carga", "=", f"min(100, {VAR('Carga')} + 150 * {DT})")]),
+            NOTA("Cuando la carga llega al máximo hay un estallido de luz alrededor de Ventura: "
+                 "el jugador tiene que saber, sin mirar el medidor, que la carta ya explota."),
+            E([si_var_o(V, "Cargando", "=", 1), si_var_o(V, "Carga", ">=", 90),
+               si_var_o(V, "CargaLista", "=", 0)],
+              [var_o(V, "CargaLista", "=", 1),
+               crear("Destello", f"{V}.X()", f"{V}.Y() - 30"), escala("Destello", "=", 3),
+               crear("Chispa", f"{V}.X() - 10", f"{V}.Y() - 40"),
+               crear("Chispa", f"{V}.X() + 10", f"{V}.Y() - 20"),
+               var_s("Flash", "=", 0.25), var_s("Temblor", "=", 1.5), sonido_fx("garra_carga", 45)]),
+            E([si_var_o(V, "Cargando", "=", 0)], [var_o(V, "CargaLista", "=", 0)]),
             NOTA("Soltar: el daño, la velocidad y el costo escalan con la carga. Nivel de la "
                  "carta = 1 + floor(Carga/45): de 0 a 44 débil, de 45 a 89 media, 90 o más "
                  "completa (la animación de la carta cambia con el nivel)."),
-            E([si_var_o(V, "Cargando", "=", 1), tecla("x", neg=True), tecla("j", neg=True)],
+            E([si_var_o(V, "Cargando", "=", 1), tecla("x", neg=True), tecla("j", neg=True),
+               si_var_s("Tactil.Carta", "=", 0)],
               [crear("Carta", f"{V}.X() + {VAR('Mirando')} * 16", f"{V}.Y() - 30"),
                var_o("Carta", "Nivel", "=", f"min(3, 1 + floor({VAR('Carga')} / 45))"),
                var_o("Carta", "Dano", "=", f"round(8 + {VAR('Carga')} * 0.32)"),
@@ -448,13 +550,19 @@ def eventos_combate():
                var_o(V, "TiempoAccion", "=", 0.22), sonido_fx("carta")]),
             E([], [var_o("Carta", "T", "+", DT)]),
             E([si_var_o("Carta", "T", ">", 1.2)], [borrar("Carta")]),
+            NOTA("La carta cargada al máximo (nivel 3) explota al chocar: usa la misma "
+                 "Explosion del farol, así el daño en área ya está resuelto para enemigos y "
+                 "barriles. El premio de esperar la carga completa es poder pegarle a un grupo."),
+            E([choca("Carta", "Suelo"), si_var_o("Carta", "Nivel", "=", 3)],
+              [crear("Explosion", "Carta.X()", "Carta.Y()"), var_s("Temblor", "=", 5),
+               sonido_fx("explosion", 65)]),
             E([choca("Carta", "Suelo")],
               [crear("Impacto", "Carta.X()", "Carta.Y()"), borrar("Carta")]),
         ], color="combate"),
         GRUPO("Farol incendiario", [
             NOTA("El farol de Ambrosio como granada: no se carga, sale en arco (velocidad "
                  "vertical inicial + gravedad propia) y explota en área. Cuesta 30 de maná."),
-            E(libre + [O(tecla_recien("c"), tecla_recien("k")),
+            E(libre + [O(tecla_recien("c"), tecla_recien("k"), tactil_recien("Farol")),
                        si_var_o(V, "FarolCooldown", "<=", 0), si_var_o(V, "Mana", ">=", 30),
                        si_var_o(V, "Cargando", "=", 0)],
               [crear("FarolBomba", f"{V}.X() + {VAR('Mirando')} * 12", f"{V}.Y() - 32"),
@@ -477,7 +585,8 @@ def eventos_combate():
         GRUPO("Parry", [
             NOTA("Ventana corta (0,2 s) y enfriamiento (0,45 s): el parry es una apuesta de "
                  "timing, no un escudo que se pueda mantener apretado."),
-            E(libre + [O(tecla_recien("z"), tecla_recien("l")), si_var_o(V, "ParryCooldown", "<=", 0)],
+            E(libre + [O(tecla_recien("z"), tecla_recien("l"), tactil_recien("Parry")),
+                       si_var_o(V, "ParryCooldown", "<=", 0)],
               [var_o(V, "ParryVentana", "=", 0.2), var_o(V, "ParryCooldown", "=", 0.45),
                var_o(V, "Cargando", "=", 0),
                A("SetStringObjectVariable", V, "Accion", "=", '"Parry"'),
@@ -491,7 +600,8 @@ def eventos_combate():
                si_var_o(V, "ParryVentana", "<=", 0), choca(V, "Peligro")],
               [var_o(V, "Dano", "=", 12), var_o(V, "EmpujeDir", "=", f"-{VAR('Mirando')}")]),
             E([si_var_o(V, "Dano", ">", 0)],
-              [var_o(V, "Vida", "-", VAR("Dano")), var_o(V, "Invulnerable", "=", 1.0),
+              [var_o(V, "Vida", "-", VAR("Dano")), var_s("DanoRecibido", "+", VAR("Dano")),
+               var_o(V, "Invulnerable", "=", 1.0),
                var_o(V, "Aturdido", "=", 0.22), var_o(V, "Cargando", "=", 0),
                A("SetStringObjectVariable", V, "Accion", "=", '"RecibirDano"'),
                var_o(V, "TiempoAccion", "=", 0.35),
@@ -615,9 +725,9 @@ def eventos_enemigos():
                  "enseña el parry contra un ataque cuerpo a cuerpo antes de los proyectiles."),
             E([si_var_o(V, "ParryVentana", ">", 0), choca(V, R), estado_es(R, "atacar")],
               [poner_estado(R, "aturdido"), var_o(R, "T", "=", 1.2), anim(R, "Golpeado"),
-               crear("ParryFx", f"{V}.X() + {VAR('Mirando')} * 10", f"{V}.Y() - 26"),
+               *efecto_parry(),
                var_o(V, "Mana", "+", 15), var_s("Hitstop", "=", 6), var_s("Temblor", "=", 3),
-               sonido_fx("parry")]),
+               var_s("Parries", "+", 1), sonido_fx("parry")]),
             *cuenta_regresiva(R, "aturdido", "patrulla", 0),
             E([anim_termino("Zarpazo")], [borrar("Zarpazo")]),
         ], color="enemigo"),
@@ -724,7 +834,7 @@ def eventos_enemigos():
             E([si_var_o(V, "ParryVentana", ">", 0), choca(V, PR), si_var_o(PR, "Reflejada", "=", 0)],
               [var_o(PR, "Reflejada", "=", 1), var_o(PR, "Dir", "=", f"-{PR}.Variable(Dir)"),
                var_o(PR, "Vel", "*", 1.8), var_o(PR, "T", "=", 0),
-               crear("ParryFx", f"{V}.X() + {VAR('Mirando')} * 10", f"{V}.Y() - 26"),
+               *efecto_parry(),
                var_o(V, "Mana", "+", 15), var_s("Hitstop", "=", 6), var_s("Temblor", "=", 3),
                var_s("Parries", "+", 1), sonido_fx("parry")]),
             E([*golpeable, choca(V, PR), si_var_o(PR, "Reflejada", "=", 0)],
@@ -748,6 +858,9 @@ def eventos_enemigos():
                var_o(V, "EmpujeDir", "=", f"sign({V}.X() - {EN}.X())")],
               [E([estado_es(R, "atacar"), choca(V, R)], [var_o(V, "Dano", "=", 15)]),
                E([estado_es(CU, "picada"), choca(V, CU)], [var_o(V, "Dano", "=", 14)])]),
+            E([choca("Carta", EN), estado_es(EN, "muerto", neg=True), si_var_o("Carta", "Nivel", "=", 3)],
+              [crear("Explosion", "Carta.X()", "Carta.Y()"), var_s("Temblor", "=", 5),
+               sonido_fx("explosion", 65)]),
             E([choca("Carta", EN), estado_es(EN, "muerto", neg=True)],
               [var_o(EN, "Vida", "-", "Carta.Variable(Dano)"), var_o(EN, "Golpe", "=", 0.15),
                crear("Impacto", "Carta.X()", "Carta.Y()"), var_s("Hitstop", "=", 2),
@@ -767,7 +880,7 @@ def eventos_enemigos():
                  "se lo saca: el vecino queda libre. Puede dejar té (vida) o luna (maná)."),
             E([si_var_o(EN, "Vida", "<=", 0), estado_es(EN, "muerto", neg=True)],
               [poner_estado(EN, "muerto"), anim(EN, "Morir"), var_s("Temblor", "=", 2),
-               sonido_fx("tinta")]),
+               var_s("Vencidos", "+", 1), sonido_fx("tinta")]),
             PARA_CADA(EN, [estado_es(EN, "muerto"), anim_termino(EN)],
                       [crear("Tinta", f"{EN}.X()", f"{EN}.Y()")],
                       [E([comparar("Random(9)", "<", 3)], [crear("Te", f"{EN}.X()", f"{EN}.Y()")]),
@@ -918,8 +1031,13 @@ def eventos_camara():
                  "exponencial. Los límites se aplican a mano (clamp) en vez de usar "
                  "ClampCamera, para poder sumar el temblor después del límite."),
             E([al_iniciar()],
-              [var_s("CamX", "=", f"{V}.X()"), var_s("CamY", "=", f"{V}.Y() - 40")]),
-            E([], [var_s("CamX", "+", f"({V}.X() + {VAR('Mirando')} * 36 - Variable(CamX)) * min(1, 5 * {DT})"),
+              [var_s("CamX", "=", f"{V}.X()"), var_s("CamY", "=", f"{V}.Y() - 40"),
+               var_s("MiraCam", "=", VAR("Mirando"))]),
+            NOTA("El adelanto no salta de un lado al otro al darse vuelta: MiraCam sigue a "
+                 "Mirando con su propio suavizado, más lento que el de la cámara, así un cambio "
+                 "de dirección corto no sacude la pantalla."),
+            E([], [var_s("MiraCam", "+", f"({VAR('Mirando')} - Variable(MiraCam)) * min(1, 2.5 * {DT})")]),
+            E([], [var_s("CamX", "+", f"({V}.X() + Variable(MiraCam) * 36 - Variable(CamX)) * min(1, 5 * {DT})"),
                    var_s("CamY", "+", f"({V}.Y() - 40 - Variable(CamY)) * min(1, 4 * {DT})"),
                    var_s("CamX", "=", clamp_x), var_s("CamY", "=", clamp_y)]),
             E([si_var_s("Temblor", ">", 0)],
@@ -977,12 +1095,28 @@ def eventos_hud():
               [A("Hide", "BarraCargaFondo"), A("Hide", "BarraCarga")]),
         ], color="hud"),
         GRUPO("Avisos", [
+            NOTA("Los avisos llevan un recuadro oscuro detrás, del ancho del texto: sobre los "
+                 "fondos ilustrados, la letra clara sola se perdía (devolución del Game Test)."),
             E([], [A("SetX", "TextoAviso", "=", "320 - TextoAviso.Width() / 2"),
-                   A("SetX", "TextoPausa", "=", "320 - TextoPausa.Width() / 2")]),
+                   A("SetX", "TextoPausa", "=", "320 - TextoPausa.Width() / 2"),
+                   A("SetX", "FondoAviso", "=", "320 - TextoAviso.Width() / 2 - 8"),
+                   ancho("FondoAviso", "=", "TextoAviso.Width() + 16")]),
             E([si_var_s("AvisoT", ">", 0)],
-              [var_s("AvisoT", "-", DT), A("Show", "TextoAviso", ""),
-               opacidad("TextoAviso", "=", "min(255, Variable(AvisoT) * 400)")]),
-            E([si_var_s("AvisoT", "<=", 0)], [A("Hide", "TextoAviso")]),
+              [var_s("AvisoT", "-", DT), A("Show", "TextoAviso", ""), A("Show", "FondoAviso", ""),
+               opacidad("TextoAviso", "=", "min(255, Variable(AvisoT) * 400)"),
+               opacidad("FondoAviso", "=", "min(220, Variable(AvisoT) * 350)")]),
+            E([si_var_s("AvisoT", "<=", 0)], [A("Hide", "TextoAviso"), A("Hide", "FondoAviso")]),
+        ], color="hud"),
+        GRUPO("Cartel de golpe y fogonazo", [
+            NOTA("El cartel (¡PARRY!) sube y se desvanece en algo más de medio segundo. El "
+                 "fogonazo blanco tapa la pantalla un instante y se apaga solo: Flash baja a "
+                 "velocidad fija, así cualquier evento sólo tiene que ponerlo en un valor."),
+            E([], [A("SetY", "TextoGolpe", "-", f"40 * {DT}"),
+                   opacidad("TextoGolpe", "-", f"380 * {DT}")]),
+            E([C("OpacityCapability::OpacityBehavior::Value", "TextoGolpe", "Opacity", "<=", 0)],
+              [borrar("TextoGolpe")]),
+            E([], [var_s("Flash", "=", f"max(0, Variable(Flash) - 3 * {DT})"),
+                   opacidad("Blanco", "=", "Variable(Flash) * 255")]),
         ], color="hud"),
         GRUPO("Fin del cuadro", [
             NOTA("La explosión del farol lastima sólo en el cuadro en que aparece: este evento va "
@@ -1001,7 +1135,8 @@ def eventos_dialogo():
     cuerpo = f"SubStr({linea}, {sep} + 1, StrLength({linea}))"
     actual = "VariableString(Guion[VariableString(Dialogo.Set)][Variable(Dialogo.Indice)])"
     total = "VariableChildCount(Guion[VariableString(Dialogo.Set)])"
-    avanzar = O(tecla_recien("Return"), tecla_recien("Space"), tecla_recien("x"), tecla_recien("z"))
+    avanzar = O(tecla_recien("Return"), tecla_recien("Space"), tecla_recien("x"), tecla_recien("z"),
+                C("HasAnyTouchStarted", ""))
     return [
         GRUPO("Disparadores", [
             NOTA("Los diálogos de cada escena viven en la variable de escena Guion (un arreglo "
@@ -1078,7 +1213,7 @@ def eventos_nivel():
             NOTA("Ventura vuelve a encender los faroles de Ambrosio a medida que avanza: cada "
                  "farol encendido es el nuevo punto de reaparición y recupera la vida."),
             E([choca(V, "FarolGas"), anim_es("FarolGas", "Apagado")],
-              [anim("FarolGas", "Encendido"),
+              [anim("FarolGas", "Encendido"), var_s("Faroles", "+", 1),
                var_s("CheckX", "=", "FarolGas.X()"), var_s("CheckY", "=", "FarolGas.Y()"),
                var_o(V, "Vida", "=", VAR("VidaMax")),
                crear("Destello", "FarolGas.X()", "FarolGas.Y() - 50"),
@@ -1089,11 +1224,65 @@ def eventos_nivel():
             E([choca(V, "Salida"), si_var_s("Saliendo", "=", 0), si_var_s("Dialogo.Activo", "=", 0)],
               [var_s("Saliendo", "=", 1), var_s("Bloqueado", "=", 1), var_s("FundidoObjetivo", "=", 1),
                sonido_fx("salida")]),
-            E([si_var_s("Saliendo", "=", 1), si_var_s("Fundido", ">", 0.97)],
+            NOTA("En los tres niveles la salida pasa antes por la pantalla de resultados "
+                 "(Resultados = 2 cuando el jugador confirma); el prólogo y la torre van directo."),
+            E([si_var_s("Saliendo", "=", 1), si_var_s("Fundido", ">", 0.97),
+               O(si_var_s("MostrarResultados", "=", 0), si_var_s("Resultados", "=", 2))],
               [A("Scene", "", "VariableString(Siguiente)", "yes")]),
         ], color="nivel"),
+        GRUPO("Resultados del nivel", [
+            NOTA("El tiempo corre sólo mientras se juega (sin diálogos, pausa ni salida): no "
+                 "se castiga leer la historia."),
+            E([si_var_s("Bloqueado", "=", 0), si_var_s("Pausa", "=", 0), si_var_s("Saliendo", "=", 0)],
+              [var_s("TiempoNivel", "+", DT)]),
+            NOTA("Puntaje: vencer, hacer parry y encender faroles suma; el daño recibido resta, y "
+                 "terminar rápido da un bono que se agota a los 300 s. El rango (S, A, B, C) es "
+                 "lo que el jugador recuerda, más que el número."),
+            E([si_var_s("Saliendo", "=", 1), si_var_s("MostrarResultados", "=", 1),
+               si_var_s("Resultados", "=", 0)],
+              [var_s("Resultados", "=", 1), var_s("ResultadosT", "=", 0),
+               var_s("FundidoObjetivo", "=", 0.7), var_s("Bloqueado", "=", 1),
+               var_s("Puntaje", "=", "max(0, Variable(Vencidos) * 100 + Variable(Parries) * 150 "
+                                     "+ Variable(Faroles) * 200 + max(0, 3000 - floor(Variable(TiempoNivel)) * 10) "
+                                     "- Variable(DanoRecibido) * 5)"),
+               texto_s("Rango", '"C"'),
+               A("LireFichierExp", '"toonaria"', '"mejor_" + CurrentSceneName()', "", "Mejor"),
+               A("ShowLayer", "", '"Resultados"'), sonido_fx("salida")],
+              [E([si_var_s("Puntaje", ">=", 2500)], [texto_s("Rango", '"B"')]),
+               E([si_var_s("Puntaje", ">=", 3500)], [texto_s("Rango", '"A"')]),
+               E([si_var_s("Puntaje", ">=", 4500)], [texto_s("Rango", '"S"')]),
+               E([comparar("Variable(Puntaje)", ">", "Variable(Mejor)")],
+                 [var_s("Mejor", "=", "Variable(Puntaje)"), var_s("Record", "=", 1),
+                  A("EcrireFichierExp", '"toonaria"', '"mejor_" + CurrentSceneName()',
+                    "Variable(Puntaje)")]),
+               E([], [texto("TituloResultados", '"NIVEL SUPERADO"'),
+                      A("SetX", "TituloResultados", "=", "320 - TituloResultados.Width() / 2"),
+                      texto("TextoResultados",
+                            '"Tiempo: " + ToString(floor(Variable(TiempoNivel))) + " s" + NewLine() + '
+                            '"Enemigos vencidos: " + ToString(Variable(Vencidos)) + NewLine() + '
+                            '"Parries: " + ToString(Variable(Parries)) + NewLine() + '
+                            '"Faroles encendidos: " + ToString(Variable(Faroles)) + NewLine() + '
+                            '"Daño recibido: " + ToString(Variable(DanoRecibido)) + NewLine() + NewLine() + '
+                            '"PUNTAJE: " + ToString(Variable(Puntaje)) + "     RANGO: " + VariableString(Rango) + NewLine() + '
+                            '"Mejor puntaje: " + ToString(Variable(Mejor)) + NewLine() + NewLine() + '
+                            '"Enter o tocar: siguiente fase      R: repetir el nivel"')])]),
+            E([si_var_s("Resultados", "=", 1)], [var_s("ResultadosT", "+", DT)]),
+            E([si_var_s("Resultados", "=", 1), si_var_s("Record", "=", 1)],
+              [A("BitmapText::SetTint", "TituloResultados", '"176;133;214"'),
+               texto("TituloResultados", '"¡NUEVO RÉCORD!"'),
+               A("SetX", "TituloResultados", "=", "320 - TituloResultados.Width() / 2")]),
+            NOTA("Medio segundo de espera antes de aceptar la confirmación: si no, el mismo Enter "
+                 "que cerró el último diálogo saltaría la pantalla sin que se llegue a leer."),
+            E([si_var_s("Resultados", "=", 1), si_var_s("ResultadosT", ">", 0.6),
+               O(tecla_recien("Return"), tecla_recien("Space"), C("HasAnyTouchStarted", ""))],
+              [var_s("Resultados", "=", 2), var_s("FundidoObjetivo", "=", 1),
+               A("HideLayer", "", '"Resultados"'), sonido_fx("menu_ok", 50)]),
+            E([si_var_s("Resultados", "=", 1), si_var_s("ResultadosT", ">", 0.6), tecla_recien("r")],
+              [A("Scene", "", "CurrentSceneName()", "yes")]),
+        ], color="nivel"),
         GRUPO("Pausa", [
-            E([O(tecla_recien("Escape"), tecla_recien("p")), si_var_s("Saliendo", "=", 0)],
+            E([O(tecla_recien("Escape"), tecla_recien("p"), tactil_recien("Pausa")),
+               si_var_s("Saliendo", "=", 0)],
               [var_s("Pausa", "=", "1 - Variable(Pausa)")]),
             E([si_var_s("Pausa", "=", 1)],
               [A("ChangeTimeScale", "", 0), A("ShowLayer", "", '"Pausa"')]),
@@ -1533,7 +1722,8 @@ def construir_mapa(mapa, escena_nombre, tiles, nivel_alto):
 
 def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
                  prefijo_tiles=None, interior=False, objetos_extra=(), inst_extra=(),
-                 enlaces_extra=(), vars_extra=None, eventos_extra=(), tema=None):
+                 enlaces_extra=(), vars_extra=None, eventos_extra=(), tema=None,
+                 resultados=False):
     """Escena de juego. Los interiores (carpa, cima de la torre) no tienen cielo, nubes ni
     bruma: los objetos existen igual (las hojas de eventos compartidas los nombran) pero sin
     instancias, así que esas acciones no hacen nada en esas escenas."""
@@ -1565,7 +1755,8 @@ def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
     fondo_w, fondo_h = tamano(fondos / f"{prefijo_arte}_ciudad.png")
     factor_x = max(0.0, (fondo_w - W) / max(1, nivel_ancho - W))
     capas = [capa("Cielo"), capa("NubesL"), capa("Ciudad"), capa("NubesC"), capa(""),
-             capa("Frente"), capa("HUD"), capa("Dialogo"), capa("Pausa"), capa("Transicion")]
+             capa("Frente"), capa("HUD"), capa("Tactil"), capa("Dialogo"), capa("Pausa"),
+             capa("Transicion"), capa("Resultados")]
     if not interior:
         inst += [
             instancia("FondoCielo", 0, 0, "Cielo"),
@@ -1582,7 +1773,8 @@ def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
         instancia("BarraManaFondo", 40, 27, "HUD"),
         instancia("BarraMana", 43, 29, "HUD", w=58, h=4),
         instancia("BarraCargaFondo", 0, 0, "", z=20), instancia("BarraCarga", 0, 0, "", z=21),
-        instancia("TextoAviso", 320, 46, "HUD"),
+        instancia("FondoAviso", 220, 42, "HUD", z=0, w=200, h=20),
+        instancia("TextoAviso", 320, 46, "HUD", z=1),
         instancia("CajaDialogo", 20, 272, "Dialogo", w=600, h=76),
         instancia("RetratoDialogo", 30, 284, "Dialogo"),
         instancia("NombreDialogo", 70, 282, "Dialogo"),
@@ -1591,9 +1783,21 @@ def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
         instancia("Seguir", 600, 334, "Dialogo"),
         instancia("TextoPausa", 320, 150, "Pausa"),
         instancia("Negro", 0, 0, "Transicion", w=W, h=H),
+        instancia("Blanco", 0, 0, "Transicion", z=1, w=W, h=H),
+        instancia("CajaDialogo", 130, 60, "Resultados", w=380, h=230),
+        instancia("TituloResultados", 320, 74, "Resultados"),
+        instancia("TextoResultados", 152, 116, "Resultados"),
         *inst_extra,
     ]
     inst += [instancia("CartaVida", 40 + i * 13, 10, "HUD", vars_={"Indice": i}) for i in range(5)]
+    # Botones táctiles: dirección abajo a la izquierda (pulgar izquierdo) y acciones abajo a la
+    # derecha, con saltar en la posición más cómoda del pulgar derecho; pausa arriba, lejos de
+    # los toques del juego.
+    botones_ = {"Izq": (14, 300), "Der": (66, 300), "Saltar": (586, 300), "Carta": (534, 312),
+                "Parry": (586, 248), "Farol": (534, 260), "Pausa": (590, 8)}
+    for tipo, (bx, by) in botones_.items():
+        inst.append(instancia("BotonTactil", bx, by, "Tactil", w=44 if tipo != "Pausa" else 36,
+                              h=44 if tipo != "Pausa" else 36, vars_={"Tipo": tipo}))
     for (zx, zid, despues) in zonas_dialogo:
         inst.append(instancia("ZonaDialogo", zx, 0, "", w=24, h=H,
                               vars_={"Id": zid, "Despues": despues}))
@@ -1602,6 +1806,10 @@ def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
         "CamX": px, "CamY": py, "Temblor": 0, "Hitstop": 0, "Fundido": 1, "FundidoObjetivo": 0,
         "Siguiente": siguiente, "Saliendo": 0, "Pausa": 0, "Bloqueado": 0, "Tiempo": 0,
         "AvisoT": 0, "SinSonido": 0, "AvisoCasco": 0, "Parries": 0, "RetratoAmbrosio": "Ambrosio",
+        "Tactil": {**{b: 0 for b in BOTONES_TACTILES}, **{f"{b}Recien": 0 for b in BOTONES_TACTILES}},
+        "MiraCam": 1, "Flash": 0, "MostrarResultados": 1 if resultados else 0, "Resultados": 0,
+        "ResultadosT": 0, "TiempoNivel": 0, "Vencidos": 0, "Faroles": 0, "DanoRecibido": 0,
+        "Puntaje": 0, "Mejor": 0, "Record": 0, "Rango": "C",
         "FactorCieloX": round(factor_x * 0.25, 4), "FactorCieloY": 0,
         "FactorCiudadX": round(factor_x, 4), "FactorCiudadY": 0,
         "Dialogo": {"Activo": 0, "Indice": 0, "Chars": 0, "Avanzo": 0, "Set": "", "Linea": "",
@@ -1612,10 +1820,12 @@ def escena_nivel(nombre, mapa, prefijo_arte, dialogos, siguiente, zonas_dialogo,
     eventos = [
         NOTA(f"{nombre}: la lógica compartida está en los eventos externos enlazados abajo. "
              "Acá sólo va lo propio de esta escena."),
-        E([al_iniciar()], [texto("TextoPausa", lineas("PAUSA", "", "Esc: seguir    Q: volver al título")),
-                           A("Hide", "Limite"), musica(tema) if tema else parar_musica()]),
+        E([al_iniciar()], [texto("TextoPausa", lineas("PAUSA", "", "Esc o II: seguir", "Q: volver al título")),
+                           A("Hide", "Limite"), A("HideLayer", "", '"Resultados"'),
+                           opacidad("Blanco", "=", 0),
+                           musica(tema) if tema else parar_musica()]),
         *eventos_extra,
-        ENLACE("Nivel"), ENLACE("Jugador"), ENLACE("Combate"), ENLACE("Enemigos"),
+        ENLACE("Tactil"), ENLACE("Nivel"), ENLACE("Jugador"), ENLACE("Combate"), ENLACE("Enemigos"),
         ENLACE("Obstaculos"), *[ENLACE(e) for e in enlaces_extra],
         ENLACE("Dialogo"), ENLACE("Camara"), ENLACE("HUD"),
     ]
@@ -1791,9 +2001,9 @@ def eventos_jefe():
                                 A("SetX", L, "+", f"{L}.Variable(Dir) * 70 * {DT}")]),
             E([si_var_o(V, "ParryVentana", ">", 0), choca(V, "Zarpazo"), es("zarpazo")],
               [borrar("Zarpazo"), a("aturdido"), var_o(L, "T", "=", 1.0), anim(L, "Atascado"),
-               crear("ParryFx", f"{V}.X() + {VAR('Mirando')} * 10", f"{V}.Y() - 26"),
+               *efecto_parry(),
                var_o(V, "Mana", "+", 20), var_s("Hitstop", "=", 8), var_s("Temblor", "=", 4),
-               sonido_fx("parry")]),
+               var_s("Parries", "+", 1), sonido_fx("parry")]),
             E([*golpeable, choca(V, "Zarpazo"), es("zarpazo")],
               [var_o(V, "Dano", "=", 20), var_o(V, "EmpujeDir", "=", f"{L}.Variable(Dir)")]),
             *cuenta_regresiva(L, "zarpazo", "decidir", f"0.8 * {L}.Variable(Ritmo)", [siguiente_paso]),
@@ -1906,8 +2116,8 @@ def escena_final():
         "Y cada noche, antes de salir, Ventura mira la luna una sola vez.",
     ]
     creditos = lineas(
-        "UN JUEGO DE", "", "Fernando Rubén Bareiro Ruiz", "Mateo Fernández",
-        "Natalia Ailén González", "Fernando Rodríguez", "", "", "CÁTEDRA",
+        "UN JUEGO DE", "", "Fernando Rodríguez", "Mateo Fernández",
+        "Natalia Ailén González", "Fernando Rubén Bareiro Ruiz", "", "", "CÁTEDRA",
         "Multimedia y Juegos en Web", "Lic. Fabián Marcelo Pineda",
         "Téc. Univ. Hernán Ignacio Hernández", "Prog. Juan Ignacio Carubia Grieco", "", "",
         "Tecnicatura Universitaria en Desarrollo Web", "Facultad de Ciencias de la Administración",
@@ -1944,7 +2154,7 @@ def escena_final():
            A("SetY", "Logo", "=", "Creditos.Y() - 120")]),
         E([], [A("SetX", "Epilogo", "=", "320 - Epilogo.Width() / 2"),
                A("SetX", "Creditos", "=", "320 - Creditos.Width() / 2")]),
-        E([O(tecla_recien("Return"), tecla_recien("Escape"),
+        E([O(tecla_recien("Return"), tecla_recien("Escape"), C("HasAnyTouchStarted", ""),
              C("PosY", "Creditos", "<", "-Creditos.Height() - 20"))],
           [var_s("Saliendo", "=", 1), var_s("FundidoObjetivo", "=", 1)]),
         E([si_var_s("Saliendo", "=", 1), si_var_s("Fundido", ">", 0.97)], [cambiar_escena("Titulo")]),
@@ -2000,11 +2210,12 @@ def escena_titulo():
                        "Saltar (doble en el aire): Espacio o W",
                        "Carta lunar: mantener X o J para cargar, soltar para tirar",
                        "Farol incendiario: C o K", "Parry: Z o L (justo antes del golpe)",
-                       "Pasar diálogos: Enter", "Pausa: Esc", "", "Enter para volver")
-    creditos = lineas("CRÉDITOS", "", "Fernando Rubén Bareiro Ruiz", "Mateo Fernández",
-                      "Natalia Ailén González", "Fernando Rodríguez", "",
+                       "Pasar diálogos: Enter", "Pausa: Esc",
+                       "En celular o tablet: botones en pantalla", "", "Enter o tocar para volver")
+    creditos = lineas("CRÉDITOS", "", "Fernando Rodríguez", "Mateo Fernández",
+                      "Natalia Ailén González", "Fernando Rubén Bareiro Ruiz", "",
                       "Cátedra: Lic. Fabián M. Pineda", "Téc. Univ. Hernán I. Hernández",
-                      "Prog. Juan Ignacio Carubia Grieco", "", "Enter para volver")
+                      "Prog. Juan Ignacio Carubia Grieco", "", "Enter o tocar para volver")
 
     def abrir_panel(contenido):
         return [var_s("PanelAbierto", "=", 1), texto("PanelTexto", contenido),
@@ -2052,6 +2263,17 @@ def escena_titulo():
            O(tecla_recien("Up"), tecla_recien("w"))],
           [var_s("Seleccion", "=", f"mod(Variable(Seleccion) + {n_op - 1}, {n_op})"),
            sonido_fx("menu", 40)]),
+        NOTA("Con pantalla táctil (o mouse) tocar una opción la elige y la confirma en el mismo "
+             "gesto: Confirmar hace las veces del Enter en los eventos de abajo."),
+        E([], [var_s("Confirmar", "=", 0)]),
+        E([si_var_s("PanelAbierto", "=", 0), si_var_s("Iniciando", "=", 0),
+           C("HasAnyTouchOrMouseStarted", ""), C("SourisSurObjet", "Opcion", "", "yes", "")],
+          [var_s("Seleccion", "=", "Opcion.Variable(Indice)"), var_s("Confirmar", "=", 1)]),
+        E([si_var_s("PanelAbierto", "=", 3), si_var_s("Iniciando", "=", 0),
+           C("HasAnyTouchOrMouseStarted", ""), C("SourisSurObjet", "CapOpcion", "", "yes", "")],
+          [var_s("CapSel", "=", "CapOpcion.Variable(Indice)"), var_s("Confirmar", "=", 1)]),
+        E([si_var_s("PanelAbierto", "=", 1), C("HasAnyTouchOrMouseStarted", "")],
+          [var_s("PanelAbierto", "=", 2), A("HideLayer", "", '"Panel"')]),
         E([], [A("SetXY", "Selector", "=", "238 + sin(Variable(Tiempo) * 6) * 2", "=",
                  "238 + Variable(Seleccion) * 25")]),
         NOTA("Capítulos: todos disponibles desde el principio. Es una entrega para mostrar y "
@@ -2064,7 +2286,8 @@ def escena_titulo():
            O(tecla_recien("Up"), tecla_recien("w"))],
           [var_s("CapSel", "=", f"mod(Variable(CapSel) + {n_cap - 1}, {n_cap})"),
            sonido_fx("menu", 40)]),
-        E([si_var_s("PanelAbierto", "=", 3), si_var_s("Iniciando", "=", 0), tecla_recien("Return")],
+        E([si_var_s("PanelAbierto", "=", 3), si_var_s("Iniciando", "=", 0),
+           O(tecla_recien("Return"), si_var_s("Confirmar", "=", 1))],
           [sonido_fx("menu_ok", 50)],
           [*[E([si_var_s("CapSel", "=", i)],
                [texto_s("Destino", f'"{escena_}"'), var_s("Iniciando", "=", 1),
@@ -2074,7 +2297,8 @@ def escena_titulo():
         E([O(si_var_s("PanelAbierto", "=", 1), si_var_s("PanelAbierto", "=", 3)),
            si_var_s("Iniciando", "=", 0), tecla_recien("Escape")], cerrar),
         E([si_var_s("PanelAbierto", "=", 1), tecla_recien("Return")], cerrar),
-        E([si_var_s("PanelAbierto", "=", 0), si_var_s("Iniciando", "=", 0), tecla_recien("Return")],
+        E([si_var_s("PanelAbierto", "=", 0), si_var_s("Iniciando", "=", 0),
+           O(tecla_recien("Return"), si_var_s("Confirmar", "=", 1))],
           [sonido_fx("menu_ok", 50)],
           [E([si_var_s("Seleccion", "=", 0)],
              [texto_s("Destino", '"Prologo"'), var_s("Iniciando", "=", 1), var_s("FundidoObjetivo", "=", 1)]),
@@ -2093,7 +2317,8 @@ def escena_titulo():
     capas = [capa(""), capa("Panel"), capa("Transicion")]
     return escena("Titulo", capas, objetos, inst, ev,
                   {"Fundido": 1, "FundidoObjetivo": 0, "Seleccion": 0, "PanelAbierto": 0,
-                   "Iniciando": 0, "Tiempo": 0, "SinSonido": 0, "CapSel": 0, "Destino": "Prologo"})
+                   "Iniciando": 0, "Tiempo": 0, "SinSonido": 0, "CapSel": 0, "Destino": "Prologo",
+                   "Confirmar": 0})
 
 
 # =================================================================== PROYECTO
@@ -2108,7 +2333,7 @@ def propiedades():
         "version": "1.0.0", "name": "Toonaria",
         "description": "Plataformero de acción en pixel art: una ciudad de tinta donde la luna llena "
                        "repinta a sus habitantes. Trabajo integrador - Multimedia y Juegos en Web, UNER.",
-        "author": "Bareiro Ruiz, Fernández, González, Rodríguez", "windowWidth": W,
+        "author": "Rodríguez, Fernández, González, Bareiro Ruiz", "windowWidth": W,
         "windowHeight": H, "latestCompilationDirectory": "", "maxFPS": 60, "minFPS": 20,
         "verticalSync": True, "platformSpecificAssets": {},
         "loadingScreen": {"backgroundColor": 1183764, "backgroundFadeInDuration": 0.2,
@@ -2120,7 +2345,7 @@ def propiedades():
                           "showProgressBar": True},
         "watermark": {"placement": "bottom-left", "showWatermark": True},
         "authorIds": [], "authorUsernames": [], "categories": ["platformer"],
-        "playableDevices": ["keyboard"], "extensionProperties": [],
+        "playableDevices": ["keyboard", "mobile"], "extensionProperties": [],
         "platforms": [{"name": "GDevelop JS platform"}], "currentPlatform": "GDevelop JS platform",
     }
 
@@ -2141,7 +2366,7 @@ def main():
                      tema="carpa"),
         escena_nivel("Nivel1", NIVEL1, "n1", DIALOGOS_N1, "Nivel2",
                      [(13 * c, "Inicio", ""), (228 * c, "Final", "salir")],
-                     tema="barrios"),
+                     tema="barrios", resultados=True),
         escena_nivel("Nivel2", NIVEL2, "n2", DIALOGOS_N2, "Nivel3",
                      [(10 * c, "Inicio", ""), (240 * c, "Final", "")],
                      objetos_extra=[sprite(rec, "ActorEco",
@@ -2149,10 +2374,10 @@ def main():
                                            origen=(48, 62))],
                      inst_extra=[instancia("ActorEco", 245 * c + 8, 18 * c, "", z=9)],
                      eventos_extra=[E([al_iniciar()], [voltear("ActorEco", True)])],
-                     tema="barrios"),
+                     tema="barrios", resultados=True),
         escena_nivel("Nivel3", NIVEL3, "n3", DIALOGOS_N3, "ArenaJefe",
                      [(10 * c, "Inicio", ""), (262 * c, "Final", "salir")],
-                     tema="corazon"),
+                     tema="corazon", resultados=True),
         escena_nivel("ArenaJefe", ARENA, "arena", DIALOGOS_ARENA, "Final",
                      [(5 * c, "Encuentro", "")],
                      prefijo_tiles="torre", interior=True, objetos_extra=objetos_jefe(),
@@ -2165,7 +2390,8 @@ def main():
                                  "RetratoAmbrosio": "Lobo"}),
         escena_final(),
     ]
-    externos = [externo("Nivel", "Nivel1", eventos_nivel()),
+    externos = [externo("Tactil", "Nivel1", eventos_tactil()),
+                externo("Nivel", "Nivel1", eventos_nivel()),
                 externo("Jugador", "Nivel1", eventos_jugador()),
                 externo("Combate", "Nivel1", eventos_combate()),
                 externo("Enemigos", "Nivel1", eventos_enemigos()),
