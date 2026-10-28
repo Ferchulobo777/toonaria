@@ -5,8 +5,7 @@ escenas escritas, no solo resumidas — para poder defenderlo con el mismo crite
 defiende cualquier otra decisión del proyecto.
 
 Versión 1.0 — 2026-10-11 (entrega final). Las escenas de abajo son el guion de referencia; el
-texto exacto que se ve en pantalla está en la sección "Diálogos en el juego" y en los
-diccionarios `DIALOGOS_*` de `herramientas/construir_juego.py`.
+texto exacto que se ve en pantalla está en la sección "Diálogos en el juego".
 
 **Logline**: en una ciudad de tinta y niebla donde la luna llena convierte a sus habitantes en
 monstruos, el único que no le teme a mirarla de frente tiene que cruzar la ciudad entera para

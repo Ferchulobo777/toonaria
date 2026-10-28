@@ -11,6 +11,9 @@ En Toonaria, una ciudad victoriana dibujada como un cartoon de los años 30, la 
 pelea con cartas que se cargan, cruza la ciudad para encontrar a **Ambrosio**, el farolero que le
 enseñó el oficio y que ahora es un lobo en la cima de la torre del reloj.
 
+**Jugalo en el navegador**: [ferchulobo777.itch.io/toonaria-uner](https://ferchulobo777.itch.io/toonaria-uner)
+(PC y celular).
+
 **Equipo**: Fernando Rodríguez · Mateo Fernández · Natalia Ailén González · Fernando Rubén
 Bareiro Ruiz.
 
@@ -64,20 +67,8 @@ una pantalla de resultados muestra el puntaje, el rango y el mejor puntaje guard
 
 ### Exportar a web
 
-Requiere [Node.js](https://nodejs.org/). Una sola vez, en la raíz del repositorio:
-
-```bash
-npm install
-```
-
-Después:
-
-```bash
-npx gdexport --project ./juego/game.json --out ./exports/web
-```
-
-La carpeta `exports/web` se sirve con cualquier servidor estático o se comprime en un ZIP para
-subirla a itch.io como juego HTML5.
+En GDevelop: *Archivo → Exportar → Navegador web (HTML5)*. La carpeta exportada se sirve con
+cualquier servidor estático, o se comprime en un ZIP para subirla a itch.io como juego HTML5.
 
 ## Estructura del repositorio
 
@@ -88,59 +79,15 @@ juego/                    Proyecto GDevelop
   assets/sonido/          Efectos de sonido
   assets/musica/          Temas musicales
 diseno/
-  GDD.md                  Documento de diseño (plantilla de la cátedra) y bitácora
+  GDD.md / GDD.pdf        Documento de diseño (plantilla de la cátedra) y bitácora
   Guion.md                Guion y diálogos del juego
+  Plan-de-Mejoras.md      Devolución del Game Test y plan por entrega
   Ficha-Personaje-Ventura.md
   arte/personajes/        Arte conceptual de personajes
   arte/escenarios/        Ilustraciones de cada barrio (base de los fondos)
   arte/logo/              Logo del juego
-  arte/pipeline/          Scripts que convierten el arte en pixel art del juego
-  audio/                  Síntesis de los efectos de sonido y la música
   capturas/               Capturas del juego
-herramientas/
-  construir_juego.py      Genera juego/game.json: objetos, eventos, escenas y niveles
-  validar_eventos.mjs     Controla cada condición y acción contra el motor
-  validar_expresiones.mjs Controla cada expresión con el validador del motor
-  probar_juego.mjs        Juega la exportación con teclas reales y registra el estado
-entregas/entrega-1/       Primera entrega (29-9)
 ```
-
-## Cómo se construye
-
-El juego se genera desde scripts para que todo sea reproducible y cada cambio se pueda revisar en
-Git. Requisitos: Python 3 con `numpy`, `scipy` y `Pillow`, Node.js y `ffmpeg` (sólo para la
-música).
-
-Generar y validar el proyecto:
-
-```bash
-python herramientas/construir_juego.py
-```
-
-```bash
-node herramientas/validar_eventos.mjs juego/game.json
-```
-
-```bash
-node herramientas/validar_expresiones.mjs juego/game.json
-```
-
-El exportador de GDevelop descarta en silencio las instrucciones inválidas (el juego compila, pero
-ese evento nunca hace nada), por eso cada instrucción se valida contra el motor antes de exportar.
-
-Pruebas automáticas con teclado real (instalar `puppeteer` aparte, no es dependencia del
-proyecto):
-
-```bash
-npm install --no-save puppeteer
-```
-
-```bash
-node herramientas/probar_juego.mjs exports/web escenario.json salida/
-```
-
-Si se edita el proyecto en el editor de GDevelop, el cambio tiene que pasarse a
-`herramientas/construir_juego.py`: regenerar `game.json` sobrescribe el archivo.
 
 ## Documentación
 
@@ -148,6 +95,7 @@ Si se edita el proyecto en el editor de GDevelop, el cambio tiene que pasarse a
   arte, sonido, implementación y la bitácora de decisiones.
 - [Guion](diseno/Guion.md): la historia escena por escena y todos los diálogos del juego.
 - [Ficha de personaje](diseno/Ficha-Personaje-Ventura.md).
+- [Plan de mejoras](diseno/Plan-de-Mejoras.md): devolución de la cátedra y qué entra en cada entrega.
 
 ## Licencia
 

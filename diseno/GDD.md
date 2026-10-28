@@ -78,11 +78,11 @@ crecen solos. Varios dedos a la vez funcionan (moverse y saltar al mismo tiempo)
 - **Plataformas**: navegador en PC (teclado) y en celular o tablet (controles táctiles).
 - **Creación de niveles**: los mapas se escriben como grillas de texto (una letra por celda de
   16 px) y un script los convierte en instancias. Ver "Implementación" en el Apéndice.
-- **Generación del proyecto**: `herramientas/construir_juego.py` arma `juego/game.json` completo
-  (objetos, eventos, escenas). El proyecto se abre y se juega normalmente en el editor.
-- **Debug**: validadores de eventos y expresiones contra el propio motor, y un probador que juega
-  con teclas reales en un navegador sin ventana (`herramientas/probar_juego.mjs`). En el juego,
-  el menú "Capítulos" permite saltar a cualquier nivel o al jefe.
+- **Generación del proyecto**: el proyecto completo (objetos, eventos, escenas) se arma con
+  scripts propios de generación. Se abre y se juega normalmente en el editor.
+- **Debug**: validación de eventos y expresiones contra el propio motor, y pruebas automáticas que
+  juegan con teclas reales en un navegador. En el juego, el menú "Capítulos" permite saltar a
+  cualquier nivel o al jefe.
 
 ## Parte frontal del juego
 
@@ -450,7 +450,7 @@ el epílogo.
 
 **Ambrosio en el prólogo**: NPC de instrucción. Presenta cada estación del circuito, mira siempre
 a Ventura, la espera en la última estación y le tira cartas de práctica para el parry. Diálogos
-completos en `Guion.md` y en `herramientas/construir_juego.py` (`DIALOGOS_PROLOGO`).
+completos en `Guion.md`.
 
 **El Actor del eco** (nivel 2): NPC ambiental, no ataca; dispara el diálogo de cierre del nivel.
 
@@ -471,7 +471,7 @@ premio, nubes de tinta sobre los tablones) son el contenido alternativo.
 
 ## Música y efectos de sonido
 
-Todo el audio se genera por código (`diseno/audio/`) con las herramientas de las consolas de 8 y
+Todo el audio se genera por código con las herramientas de las consolas de 8 y
 16 bits: ondas cuadradas, triangulares, diente de sierra y ruido, con envolventes. Es coherente con
 el pixel art y cada sonido queda escrito como una receta que se puede ajustar.
 
@@ -501,25 +501,20 @@ en `diseno/Plan-de-Mejoras.md`.
 **Expansiones posibles** (fuera del alcance): una versión mini-jefe de Mr. Pennypencher (el
 Repintado del delantal) con ataques propios.
 
-**Texto del juego**: los diálogos completos están en `Guion.md` y en los diccionarios
-`DIALOGOS_*` de `herramientas/construir_juego.py`.
+**Texto del juego**: los diálogos completos están en `Guion.md`.
 
 ### Arte
 
-- **Pixel art de 48 px** en lienzo de 96 × 64 y paleta cerrada de 20 colores "tinta + morado"
-  (`diseno/arte/pipeline/paleta.py`).
-- **Personajes**: las hojas de animación parten de nuestro arte de personajes
-  (`diseno/arte/personajes/`) y pasan por nuestro proceso de pixelizado (`pixelizar.py`): recorte del fondo, escala común por personaje, cuantización a la paleta en
-  espacio Lab, prioridad al contorno de tinta, ajuste de la grilla y anclaje común para que no
-  "tiemblen". `ventura.py` y `enemigos.py` arman cada animación; los idle se hacen a mano
-  desplazando el torso, así el personaje quieto no "hierve".
+- **Pixel art de 48 px** en lienzo de 96 × 64 y paleta cerrada de 20 colores "tinta + morado".
+- **Personajes**: las animaciones parten de nuestro arte de personajes (`diseno/arte/personajes/`)
+  y pasan por nuestro proceso de pixelizado: recorte del fondo, escala común por personaje,
+  cuantización a la paleta, prioridad al contorno de tinta, ajuste de la grilla y anclaje común
+  para que no "tiemblen". Los idle se hacen a mano desplazando el torso, así el personaje quieto no
+  "hierve".
 - **Fondos**: nuestras ilustraciones de cada barrio (`diseno/arte/escenarios/`) se encadenan con
-  un fundido de niebla, se pixelizan con trama ordenada y se separan en capas
-  (`fondos_ilustrados.py`).
-- **Geometría pura** (tiles, proyectiles, efectos, HUD, obstáculos): dibujada por código
-  (`objetos_juego.py`, `obstaculos.py`) porque necesita exactitud de grilla.
-- Las ilustraciones quedan en `diseno/arte/` y los scripts en `diseno/arte/pipeline/`: los
-  assets del juego se pueden regenerar desde ahí.
+  un fundido de niebla, se pixelizan con trama ordenada y se separan en capas de parallax.
+- **Geometría pura** (tiles, proyectiles, efectos, HUD, obstáculos): dibujada por código porque
+  necesita exactitud de grilla.
 
 ### Implementación en GDevelop
 
@@ -534,19 +529,18 @@ Repintado del delantal) con ataques propios.
   `Nombre|Texto`.
 - Los comentarios de los event sheets explican el porqué de cada estructura no obvia.
 
-**El proyecto se genera desde un script** (`herramientas/construir_juego.py`). Elegimos este camino
-para poder regenerar el juego completo de forma reproducible, revisar cada cambio en Git y validar
-cada instrucción contra el motor. `juego/game.json` se abre y se juega en el editor; si se lo edita
-ahí, el cambio tiene que pasarse al script o se pierde al regenerar.
+**El proyecto se arma con scripts propios.** Elegimos este camino para poder regenerar el juego
+completo de forma reproducible y validar cada instrucción contra el motor. `juego/game.json` se
+abre y se juega en el editor de GDevelop.
 
 **Verificación**:
-- `validar_eventos.mjs`: cada condición y acción existe, tiene los parámetros correctos y se aplica
+- Validación de eventos: cada condición y acción existe, tiene los parámetros correctos y se aplica
   al tipo de objeto correcto. El exportador descarta en silencio las instrucciones inválidas, así
   que sin esto un evento roto no da ningún error.
-- `validar_expresiones.mjs`: todas las expresiones con el validador del propio motor.
-- `probar_juego.mjs`: carga la exportación en un navegador, aprieta teclas de verdad y registra el
-  estado del juego. Incluye un recorrido automático que cruza cada nivel y un seguimiento de la
-  máquina de estados del jefe.
+- Validación de expresiones con el validador del propio motor.
+- Pruebas automáticas: cargan la exportación en un navegador, aprietan teclas de verdad y registran
+  el estado del juego. Incluyen un recorrido que cruza cada nivel y un seguimiento de la máquina de
+  estados del jefe.
 
 ### Pruebas (2026-10-11)
 

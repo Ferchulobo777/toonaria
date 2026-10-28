@@ -51,5 +51,5 @@ Los seis puntos están implementados y probados (ver la bitácora del GDD, 2026-
 
 ## Herramientas
 
-- Eventos: `herramientas/construir_juego.py` (no se edita `juego/game.json` a mano) y validación con `validar_eventos.mjs` / `validar_expresiones.mjs` / `probar_juego.mjs`.
-- Arte nuevo (giro, explosión de la recarga, mapamundi, tienda, íconos de mejoras): hojas fuente con fondo verde que se pasan por el pipeline de `diseno/arte/pipeline/` con la paleta de 20 colores.
+- Eventos: cada mejora se valida contra el motor y se prueba jugando antes de exportar.
+- Arte nuevo (giro, explosión de la recarga, mapamundi, tienda, íconos de mejoras): mismo proceso de pixelizado y la misma paleta de 20 colores que el resto del juego.
