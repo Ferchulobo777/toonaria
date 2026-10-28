@@ -14,6 +14,11 @@ enseñó el oficio y que ahora es un lobo en la cima de la torre del reloj.
 **Equipo**: Fernando Rodríguez · Mateo Fernández · Natalia Ailén González · Fernando Rubén
 Bareiro Ruiz.
 
+# Enlace directo al juego
+
+* https://udw-grupo11.itch.io/toonariav2 
+
+
 ---
 
 ## Contenido
